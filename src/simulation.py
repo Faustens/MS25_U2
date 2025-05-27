@@ -3,6 +3,7 @@ import heapq
 from fvg_logging import CsvLogger as Logger
 from fvg_logging import JsonLogger
 from datetime import datetime
+from abc import abc, abstractmethod
 
 # =============================================================================
 # Events
@@ -55,6 +56,9 @@ class ArrivalEvent (Event):
         self.log_self()            
 
 # class: PreregistrationEvent -------------------------------------------------
+# [TODO][Q] Is the PreregistrationEvent removed? Is there still a 1-2 minute waiting
+#            time for preregistration? Does prereg happen before enqueueing the car?
+#            idk.
 '''
 class PreregistrationEvent (Event):
     """
@@ -98,16 +102,25 @@ class DepartureEvent (Event):
         else:                                       # If no cars need service
             self._simulation.free_server()
 
-
 # =============================================================================
+# Simulation
+# =============================================================================
+# class: EventQueue -----------------------------------------------------------
+# [TODO] Implement different Queue styles (FIFO, LIFO,...)
+# [TODO] Not yet in use
+class EventQueue(ABC):
+    def __init__(self):
+        self._queue = []
+        heapq.heapify(self._queue)
+    def add_event(self, event):
+        heapq.heappush(self._event_queue,event)
+    def pop_event(self):
+        if not self._event_queue: return None
+        return heapq.heappop(self._event_queue)
+    def is_empty(self):
+        return len(self._queue) == 0
+
 # class: SingleQueueMultiServerSimulation -------------------------------------
-# [Idea] on ArrivalEvent, if any server is free, they get assigned the car, else
-#         the car is pushed onto the queue
-#         On DepartureEvent it is checked, if there are cars in the queue if yes,
-#         the next car gets served, if no the server is added back to the available
-#         servers.
-#         => 3 Events: ArrivalEvent, TestingEvent (preregistration and test), and
-#                      DepartureEvent 
 class SingleQueueMultiServerSimulation:
     MAX_ARRIVAL_TIME = 7200 # Zeit in Sekunden
     MAX_SERVERS = 3
@@ -131,7 +144,7 @@ class SingleQueueMultiServerSimulation:
     def populate_event_queue(self):
         time = random.randint(120, 180)
         while time <= self.MAX_ARRIVAL_TIME:
-            event = ArrivalEvent(self._id_counter,time,random.randint(1,5),self)
+            event = ArrivalEvent(self._id_counter,time,random.randint(1,3),self)
             self.add_event(event)
             step = random.randint(120, 180)
             time += step
