@@ -3,7 +3,7 @@ import heapq
 from fvg_logging import CsvLogger as Logger
 from fvg_logging import JsonLogger
 from datetime import datetime
-from abc import abc, abstractmethod
+from abc import ABC, abstractmethod
 
 # =============================================================================
 # Events
@@ -103,23 +103,46 @@ class DepartureEvent (Event):
             self._simulation.free_server()
 
 # =============================================================================
-# Simulation
+# Priority Queue
 # =============================================================================
-# class: EventQueue -----------------------------------------------------------
-# [TODO] Implement different Queue styles (FIFO, LIFO,...)
-# [TODO] Not yet in use
-class EventQueue(ABC):
-    def __init__(self):
+class PriorityQueue:
+    """
+    Baic priority queue. Wraps stored value into an Element object which is
+     ordered according to the provided comparator function
+    Parameters:
+        comparator: a comparator function meant to compare two provided elements. 
+                    The user is responsible for making sure the comparator can 
+                    compare stored objects 
+    """
+    def __init__(self,comparator):
+        self._comparator = comparator
         self._queue = []
-        heapq.heapify(self._queue)
-    def add_event(self, event):
-        heapq.heappush(self._event_queue,event)
-    def pop_event(self):
-        if not self._event_queue: return None
-        return heapq.heappop(self._event_queue)
+        heapq.heapify(self._queue)  # Likely unnecessary
+    def push(self,value):
+        element = self.Element(value, self._comparator)
+        heapq.heappush(self._queue,element)
+    def pop(self):
+        element = heapq.heappop()
+        return element.value
+    def peek(self): # Expensive operation
+        value = self.pop()
+        self.push(value)
+        return value
     def is_empty(self):
         return len(self._queue) == 0
 
+    class Element:
+        def __init__(self,value,comparator):
+            self._comparator = comparator
+            self.value = value
+        def __lt__(self,other):
+            return self._comparator(self.value,other.value) < 0
+        def __eq__(self,other):
+            return self._comparator(self.value,other.value) == 0
+
+# =============================================================================
+# Simulation
+# =============================================================================
 # class: SingleQueueMultiServerSimulation -------------------------------------
 class SingleQueueMultiServerSimulation:
     MAX_ARRIVAL_TIME = 7200 # Zeit in Sekunden
