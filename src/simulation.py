@@ -37,7 +37,7 @@ class Event:
     def __ge__(self,other):
         return self._timestamp >= other._timestamp
     def log_self(self):
-        self._simulation.log(self._timestamp,self._car_id,self._person_count,self.TYPE,self._simulation.car_count())
+        self._simulation.log(self._timestamp,self._car_id,self._person_count,self.TYPE,self._simulation.cars_in_system())
     def processEvent(self):
         pass
 
@@ -117,12 +117,15 @@ class PriorityQueue:
     def __init__(self,comparator):
         self._comparator = comparator
         self._queue = []
+        self._size = 0
         heapq.heapify(self._queue)  # Likely unnecessary
     def push(self,value):
         element = self.Element(value, self._comparator)
         heapq.heappush(self._queue,element)
+        self._size += 1
     def pop(self):
-        element = heapq.heappop()
+        element = heapq.heappop(self._queue)
+        self._size -= 1
         return element.value
     def peek(self): # Expensive operation
         value = self.pop()
@@ -130,6 +133,8 @@ class PriorityQueue:
         return value
     def is_empty(self):
         return len(self._queue) == 0
+    def size(self):
+        return self._size
 
     class Element:
         def __init__(self,value,comparator):
@@ -144,22 +149,53 @@ class PriorityQueue:
 # Simulation
 # =============================================================================
 # class: SingleQueueMultiServerSimulation -------------------------------------
+# [TODO] replace direct heapq for event queue by PriorityQueue
+# [TODO] replace simple servicing style by server-car manager, as more complicated
+#         interactions may be nessecary for task 2
 class SingleQueueMultiServerSimulation:
     MAX_ARRIVAL_TIME = 7200 # Zeit in Sekunden
     MAX_SERVERS = 3
 
-    def __init__(self):
-        # Set up event and car-queue and transforming the former into a heap (priority queue)
+    # car queue comparator functions ------------------------------------------
+    # FIFO: The car with the lowest id has entered before every other car
+    def fifo_comp(car1,car2):
+        if car1[0] < car2[0]: return -1
+        elif car1[0] == car2[0]: return 0
+        else: return 1
+    # LIFO: The car with the currently highest id has entered after every other
+    def lifo_comp(car1,car2):
+        if car1[0] > car2[0]: return -1
+        elif car1[0] == car2[0]: return 0
+        else: return 1
+    # SPT: The car with the fewest people has the shortest processing time.
+    def spt_comp(car1,car2):
+        if car1[1] < car2[1]: return -1
+        elif car1[1] == car2[1]: return 0
+        else: return 1
+    # LPT: The car with the fewest people has the shortest processing time.
+    def lpt_comp(car1,car2):
+        if car1[1] > car2[1]: return -1
+        elif car1[1] == car2[1]: return 0
+        else: return 1
+    # Initializer -------------------------------------------------------------
+    def __init__(self,servicing_style="fifo"):
+        print("Init")
         self._event_queue = []
         heapq.heapify(self._event_queue)
-        self._car_queue = []
+        self._car_queue = None
+        match(servicing_style):
+            case "fifo": self._car_queue = PriorityQueue(self.fifo_comp)
+            case "lifo": self._car_queue = PriorityQueue(self.lifo_comp)
+            case "spt": self._car_queue = PriorityQueue(self.spt_comp)
+            case "lpt": self._car_queue = PriorityQueue(self.lpt_comp)
+            case _: raise Exception
         self._id_counter = 0
         self._available_servers = self.MAX_SERVERS
         self.populate_event_queue()
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         logname = f"simulation_log_{timestamp}"
         meta_logname = f"simulation_log_{timestamp}_meta"
-        self._logger = Logger("time","car_id","person_count","event_type","cars_in_queue",filename = logname, path = "./logs")
+        self._logger = Logger("time","car_id","person_count","event_type","cars_in_system",filename = logname, path = "./logs")
         self._meta_logger = JsonLogger(filename = meta_logname, path = "./logs")
         self._meta_logger.log("server_count",str(self.MAX_SERVERS))
         self._meta_logger.log("time_limit",str(self.MAX_ARRIVAL_TIME))
@@ -180,11 +216,17 @@ class SingleQueueMultiServerSimulation:
         return heapq.heappop(self._event_queue)
     # Car management ------------------------------------------------
     def enqueue_car(self, car: tuple):
-        self._car_queue.append(car)
+        self._car_queue.push(car)
     def pop_car(self):
         return self._car_queue.pop()
     def car_count(self):
-        return len(self._car_queue)
+        """
+        Returns the total amount of cars in the system, i.e. queued,
+         as well as currently processed
+        """
+        return self._car_queue.size()
+    def cars_in_system(self):
+        return self._car_queue.size() + self.MAX_SERVERS - self._available_servers
     # Server management ---------------------------------------------
     def server_available(self):
         return self._available_servers > 0
