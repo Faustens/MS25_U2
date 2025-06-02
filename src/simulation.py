@@ -132,14 +132,15 @@ class CovidTestSimulation(BaseQueueServerSimulation):
     
     def _init_queues(self, queue_count, servicing_style) -> list[PriorityQueue]:
         match(servicing_style):
-            case "fifo": return [PriorityQueue(self.fifo_comp) for i in range(queue_count)]
-            case "lifo": return [PriorityQueue(self.lifo_comp) for i in range(queue_count)]
-            case "spt": return [PriorityQueue(self.spt_comp) for i in range(queue_count)]
-            case "lpt": return [PriorityQueue(self.lpt_comp) for i in range(queue_count)]
-            case _: return [PriorityQueue(self.fifo_comp) for i in range(queue_count)]
+            case "fifo": return [PriorityQueue(self.fifo_comp) for _ in range(queue_count)]
+            case "lifo": return [PriorityQueue(self.lifo_comp) for _ in range(queue_count)]
+            case "spt": return [PriorityQueue(self.spt_comp) for _ in range(queue_count)]
+            case "lpt": return [PriorityQueue(self.lpt_comp) for _ in range(queue_count)]
+            case _: return [PriorityQueue(self.fifo_comp) for _ in range(queue_count)]
     def _init_distribution_manager(self, server_count, distribution_style, queues):
         match(distribution_style):
             case "oto": return OneToOneDistrubutionManager(server_count, self, queues=queues)
+            case "lqf": return LQFDistributionManager(server_count,self,queues=queues)
             case _: return OneToOneDistrubutionManager(server_count, self)
     def _populate_event_queue(self):
         id_counter = 0
@@ -203,7 +204,7 @@ class BaseDistributionManager(ABC):
     """
     def __init__(self,server_count,simulation,queues=[]):
         self._queues: list[PriorityQueue] = queues
-        self._servers: list[Server] = [Server() for i in range(server_count)]
+        self._servers: list[Server] = [Server() for _ in range(server_count)]
         self._simulation: BaseQueueServerSimulation = simulation
     @abstractmethod
     def enqueue(self, *args, **kwargs):
@@ -242,7 +243,7 @@ class OneToOneDistrubutionManager(CovidSimDistributionManager):
     def update(self, timestamp):
         for i in range(len(self._servers)):
             server = self._servers[i]
-            # If a server is busy, check if the busy time is over and free, if yes
+            # If a server is busy, check if the busy time is over and free if yes
             if not server.available:
                 if server.busy_until > timestamp: continue
                 else: server.free()
@@ -253,12 +254,10 @@ class OneToOneDistrubutionManager(CovidSimDistributionManager):
             # the departure event.
             # I do not like this implementation, but i dont know how else to free the server
             # correctly yet.
+            timestamp = timestamp + random.randint(60,120) + car[1] * 120
             testing_event = TestingEvent(car[0],timestamp,car[1],self._simulation)
-            busy_until = timestamp + random.randint(60,120) + car[1] * 120
-            departure_event = DepartureEvent(car[0],busy_until,car[1],self._simulation)
             self._simulation.add_event(testing_event)
-            self._simulation.add_event(departure_event)
-            server.lock(busy_until)
+            server.lock(timestamp)
 
 class LQFDistributionManager(BaseDistributionManager):
     """
@@ -268,8 +267,29 @@ class LQFDistributionManager(BaseDistributionManager):
     """
     # TODO
     def update(self, timestamp):
-        pass
-
+        for i in range(len(self._servers)):
+            server = self._servers[i]
+            # If a server is busy, check if the busy time is over and free if yes
+            if not server.available:
+                if server.busy_until > timestamp: continue
+                else: server.free()
+            current_queue = self._queues[0]
+            cnt = current_queue.size()
+            for queue in self._queues[1:]:
+                val = queue.size()
+                if val < cnt: 
+                    cnt = val
+                    current_queue = queue
+            car = current_queue.pop()
+            if car is None: break   # If the car is none, the largest queue has no cars => No cars can be serviced atm
+            # If a car could be fetched create the next events and lock the server until
+            # the departure event.
+            # I do not like this implementation, but i dont know how else to free the server
+            # correctly yet.
+            timestamp = timestamp + random.randint(60,120) + car[1] * 120
+            testing_event = TestingEvent(car[0],timestamp,car[1],self._simulation)
+            self._simulation.add_event(testing_event)
+            server.lock(timestamp)
 
 # =============================================================================
 # Server
@@ -345,9 +365,6 @@ class ArrivalEvent (CovidEvent):
         self.log_self()            
 
 # class: PreregistrationEvent -------------------------------------------------
-# [TODO][Q] Is the PreregistrationEvent removed? Is there still a 1-2 minute waiting
-#            time for preregistration? Does prereg happen before enqueueing the car?
-#            idk.
 '''
 class PreregistrationEvent (Event):
     """
@@ -371,6 +388,8 @@ class TestingEvent (CovidEvent):
     """
     TYPE = "TESTING"
     def processEvent(self):
+        event = DepartureEvent(self._car_id,self._timestamp,self._person_count,self._simulation)
+        self._simulation.add_event(event)
         self.log_self()
         self._simulation.update(self._timestamp)
 
