@@ -1,3 +1,6 @@
+# Author: Tillmann Faust
+# Python Version: Python 10.0.0
+
 import random
 import heapq
 from fvg_logging import CsvLogger as Logger
@@ -5,9 +8,9 @@ from fvg_logging import JsonLogger
 from datetime import datetime
 from abc import ABC, abstractmethod
 
-# =============================================================================
+# =================================================================================================
 # Priority Queue
-# =============================================================================
+# =================================================================================================
 class PriorityQueue:
     """
     Baic priority queue. Wraps stored value into an Element object which is
@@ -53,9 +56,9 @@ class PriorityQueue:
         def __eq__(self,other):
             return self._comparator(self.value,other.value) == 0
 
-# =============================================================================
+# =================================================================================================
 # Simulation
-# =============================================================================
+# =================================================================================================
 # abstract class: BaseSimulation ----------------------------------------------
 class BaseSimulation(ABC):
     """
@@ -125,10 +128,16 @@ class BaseQueueServerSimulation(BaseSimulation,ABC):
 
 # class: CovidTestSimulation --------------------------------------------------
 class CovidTestSimulation(BaseQueueServerSimulation):
-    MAX_ARRIVAL_TIME = 7200
-
-    def __init__(self,queue_count=3, server_count=3,servicing_style="fifo",distribution_style="oto"):
+    def __init__(
+            self,
+            queue_count=3, 
+            server_count=3,
+            servicing_style ="fifo",
+            distribution_style="oto",
+            max_arrival_time=7200,
+        ):
         super().__init__(queue_count, server_count,servicing_style,distribution_style)
+        self.MAX_ARRIVAL_TIME = max_arrival_time
     
     def _init_queues(self, queue_count, servicing_style) -> list[PriorityQueue]:
         match(servicing_style):
@@ -139,9 +148,9 @@ class CovidTestSimulation(BaseQueueServerSimulation):
             case _: return [PriorityQueue(self.fifo_comp) for _ in range(queue_count)]
     def _init_distribution_manager(self, server_count, distribution_style, queues):
         match(distribution_style):
-            case "oto": return OneToOneDistrubutionManager(server_count, self, queues=queues)
+            case "oto": return OneToOneDistrubutionManager(server_count,self,queues=queues)
             case "lqf": return LQFDistributionManager(server_count,self,queues=queues)
-            case _: return OneToOneDistrubutionManager(server_count, self)
+            case _: return OneToOneDistrubutionManager(server_count,self,queues=queues)
     def _populate_event_queue(self):
         id_counter = 0
         time = random.randint(120, 180)
@@ -167,7 +176,6 @@ class CovidTestSimulation(BaseQueueServerSimulation):
     def update(self,timestamp):
         self._dist_manager.update(timestamp)
 
-
     # car queue comparator functions ------------------------------------------
     # FIFO: The car with the lowest id has entered before every other car
     def fifo_comp(self,car1,car2):
@@ -192,9 +200,9 @@ class CovidTestSimulation(BaseQueueServerSimulation):
         
 
 
-# =============================================================================
+# =================================================================================================
 # Distribution Manager
-# =============================================================================
+# =================================================================================================
 class BaseDistributionManager(ABC):
     """
     This class ist resposible for managing the distribution of cars from different
@@ -291,9 +299,9 @@ class LQFDistributionManager(BaseDistributionManager):
             self._simulation.add_event(testing_event)
             server.lock(timestamp)
 
-# =============================================================================
+# =================================================================================================
 # Server
-# =============================================================================
+# =================================================================================================
 class Server:
     """
     Simple wrapper class for server information
@@ -307,9 +315,9 @@ class Server:
     def free(self):
         self.available = True
 
-# =============================================================================
+# =================================================================================================
 # Events
-# =============================================================================
+# =================================================================================================
 class BaseEvent(ABC):
     """A base event is comprised of a timestamp and an associated simulation"""
     TYPE = None
